@@ -1,14 +1,39 @@
 # AI Office MCP
 
-This server lets the Grok TUI run AI Office by CloudComputerAI on this Windows PC. It launches the installed `CloudComputerAI.exe`, opens a document the exe already accepts, and republishes the local [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) checkout for clicks and typing.
+This server lets a Grok TUI on a Windows PC run AI Office by CloudComputerAI on that same PC. It launches the installed `CloudComputerAI.exe`, opens a document the exe already accepts, and starts Windows-MCP for clicks and typing.
 
-The installed app is not modified. `app.asar` is not patched. `windows-mcp install` is not run. PowerShell and Registry are not published.
+It controls the PC where it is running. It does not reach another computer.
 
-Windows-MCP checkout pin: `277db1bed9612fdfd242a50581f83ae981b07ff7` on `main` at `C:\Users\Admin\projects\Windows-MCP`. This repo does not vendor that checkout.
+The installed AI Office app is not modified. PowerShell and Registry are not published. `windows-mcp install` is not run.
+
+Windows-MCP is pinned to commit `277db1bed9612fdfd242a50581f83ae981b07ff7` from https://github.com/CursorTouch/Windows-MCP. `uv sync` installs that pin into this project. A separate checkout is optional.
+
+## Install on a Windows PC
+
+Requirements: Windows, AI Office installed for that user, [uv](https://docs.astral.sh/uv/) on PATH or at `%USERPROFILE%\.local\bin\uv.exe`, and Python 3.14 (uv can install it).
+
+```powershell
+git clone https://github.com/techfundoffice/ai-office-mcp.git
+Set-Location ai-office-mcp
+uv sync
+```
+
+Add this to `%USERPROFILE%\.grok\config.toml`. Replace the directory with the folder that was cloned. Use the full path to `uv.exe` when `uv` is not on PATH.
+
+```toml
+[mcp_servers.ai-office]
+command = "uv"
+args = ["--directory", "C:\\path\\to\\ai-office-mcp", "run", "ai-office-mcp"]
+env = { ANONYMIZED_TELEMETRY = "false" }
+enabled = true
+startup_timeout_sec = 120
+```
+
+Reload MCP in the Grok TUI. The first start installs nothing further when `uv sync` has already run.
+
+`Launch` looks for `%LOCALAPPDATA%\Programs\CloudComputerAI\CloudComputerAI.exe`.
 
 ## Tools
-
-Office tools talk to the installed exe:
 
 - `Launch` starts AI Office when it is not running and returns the window title.
 - `Open` hands one existing document path to the exe.
@@ -16,21 +41,10 @@ Office tools talk to the installed exe:
 - `OfficeScreenshot` runs `--screenshot`. That opens the screenshot overlay. It does not return image bytes. Print Screen and Win+Shift+X stay on that overlay.
 - `Record` runs `--record` and opens Cap.
 - `Desktops` and `SessionStatus` run `--desktops` and `--session-status`.
+- Desktop tools from Windows-MCP: Snapshot, Screenshot, Click, Type, and the rest of that set except PowerShell and Registry.
 
-`Screenshot` is the forwarded computer-use tool that returns a picture. The office overlay tool is named `OfficeScreenshot` so the two do not share a name.
+`Screenshot` returns a picture to the chat. `OfficeScreenshot` is the overlay.
 
-## Rollback
+## This PC
 
-Grok's `config.toml` is not in this repo. It holds other servers' credentials.
-
-Before pointing Grok at this server, copy the live config to `C:\Users\Admin\.grok\config.toml.bak-2026-10-29-ai-office`. Restore that file over `config.toml` and reload MCP to remove this server and turn the standalone `windows-mcp` entry back on.
-
-Code rollback is `git checkout` or `git revert` of a commit on `main`, then the config restore if Grok was already pointed here.
-
-## Run
-
-```powershell
-C:\Users\Admin\.local\bin\uv.exe --directory C:\Users\Admin\projects\ai-office-mcp run ai-office-mcp
-```
-
-The process speaks MCP on stdin and stdout. It starts Windows-MCP with `ANONYMIZED_TELEMETRY=false` and `--exclude-tools PowerShell,Registry`.
+Rollback of the Grok config on this machine is `C:\Users\Admin\.grok\config.toml.bak-2026-10-29-ai-office`. Copy it over `config.toml` and reload MCP. That file is not in this repo.

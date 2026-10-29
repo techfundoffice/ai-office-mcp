@@ -1,11 +1,19 @@
-"""Republish the local Windows-MCP checkout under this server.
+"""Republish Windows-MCP under this server.
 
 PowerShell and Registry stay excluded. This process does not run
 `windows-mcp install` and does not listen on the network.
+
+The desktop tools come from the windows-mcp package installed with this
+project. A customer does not need a checkout on a fixed drive path. Set
+WINDOWS_MCP_DIR to run a local checkout instead. uv is taken from UV_EXE,
+PATH, or %USERPROFILE%\\.local\\bin.
 """
 
 from __future__ import annotations
 
+import os
+import shutil
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,8 +23,10 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 WINDOWS_MCP_COMMIT = "277db1bed9612fdfd242a50581f83ae981b07ff7"
-DEFAULT_UV = Path(r"C:\Users\Admin\.local\bin\uv.exe")
-DEFAULT_WINDOWS_MCP = Path(r"C:\Users\Admin\projects\Windows-MCP")
+WINDOWS_MCP_FROM = (
+    "git+https://github.com/CursorTouch/Windows-MCP.git@" + WINDOWS_MCP_COMMIT
+)
+SERVE_ARGS = ["serve", "--exclude-tools", "PowerShell,Registry"]
 
 EXCLUDED_TOOLS = frozenset({"PowerShell", "Registry"})
 REQUIRED_TOOLS = frozenset(
@@ -56,27 +66,71 @@ def select_forwarded(tools: list[types.Tool], office_names: frozenset[str]) -> l
     return list(tools)
 
 
-def windows_mcp_parameters(
-    uv: Path = DEFAULT_UV,
-    checkout: Path = DEFAULT_WINDOWS_MCP,
-) -> StdioServerParameters:
-    if not uv.is_file():
-        raise FileNotFoundError(f"uv is not installed at {uv}")
-    if not (checkout / "pyproject.toml").is_file():
-        raise FileNotFoundError(f"Windows-MCP checkout is not at {checkout}")
+def user_home() -> Path:
+    return Path(os.environ.get("USERPROFILE") or Path.home())
+
+
+def bundled_windows_mcp() -> Path | None:
+    scripts = Path(sys.executable).resolve().parent
+    for name in ("windows-mcp.exe", "windows-mcp"):
+        candidate = scripts / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def resolve_uv() -> Path | None:
+    override = os.environ.get("UV_EXE", "").strip()
+    if override and Path(override).is_file():
+        return Path(override)
+    found = shutil.which("uv")
+    if found:
+        return Path(found)
+    home = user_home()
+    for name in ("uv.exe", "uv"):
+        candidate = home / ".local" / "bin" / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def windows_mcp_launch() -> tuple[str, list[str], str | None]:
+    bundled = bundled_windows_mcp()
+    if bundled is not None:
+        return str(bundled), list(SERVE_ARGS), None
+
+    uv = resolve_uv()
+    if uv is None:
+        raise FileNotFoundError(
+            "windows-mcp is not installed in this Python environment, and uv was not found. "
+            "Install uv, then run uv sync in the ai-office-mcp folder."
+        )
+
+    checkout = os.environ.get("WINDOWS_MCP_DIR", "").strip()
+    if checkout:
+        root = Path(checkout)
+        if not (root / "pyproject.toml").is_file():
+            raise FileNotFoundError(f"WINDOWS_MCP_DIR is not a Windows-MCP checkout: {root}")
+        return (
+            str(uv),
+            ["--directory", str(root), "run", "windows-mcp", *SERVE_ARGS],
+            str(root),
+        )
+
+    return (
+        str(uv),
+        ["tool", "run", "--from", WINDOWS_MCP_FROM, "windows-mcp", *SERVE_ARGS],
+        None,
+    )
+
+
+def windows_mcp_parameters() -> StdioServerParameters:
+    command, args, cwd = windows_mcp_launch()
     return StdioServerParameters(
-        command=str(uv),
-        args=[
-            "--directory",
-            str(checkout),
-            "run",
-            "windows-mcp",
-            "serve",
-            "--exclude-tools",
-            "PowerShell,Registry",
-        ],
+        command=command,
+        args=args,
         env={"ANONYMIZED_TELEMETRY": "false"},
-        cwd=str(checkout),
+        cwd=cwd,
     )
 
 

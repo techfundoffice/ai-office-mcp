@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "MCP server that runs AI Office by CloudComputerAI from the Grok TUI."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["mcp>=1.29.1,<2"]
+dependencies = [
+    "mcp>=1.29.1,<2",
+    "windows-mcp @ git+https://github.com/CursorTouch/Windows-MCP.git@277db1bed9612fdfd242a50581f83ae981b07ff7",
+]
 
 [project.scripts]
 ai-office-mcp = "ai_office_mcp.__main__:main"
